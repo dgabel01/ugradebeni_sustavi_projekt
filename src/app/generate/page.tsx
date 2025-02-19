@@ -1,9 +1,13 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { default as dayjs } from 'dayjs';
-import duration from 'dayjs/plugin/duration';
+import PocketBase from "pocketbase";
+import dayjs from "dayjs";
+import duration from "dayjs/plugin/duration";
 dayjs.extend(duration);
+
+const pb = new PocketBase("http://127.0.0.1:8090"); // Adjust to your PocketBase URL
+pb.autoCancellation(false)
 
 const courses = [
   "Operacijski sustavi",
@@ -13,20 +17,29 @@ const courses = [
 
 const GenerateQrPage = () => {
   const router = useRouter();
-  const [activeTimers, setActiveTimers] = useState<{ [key: string]: string }>(
-    {}
-  );
   const [email, setEmail] = useState("");
   const [currentDateTime, setCurrentDateTime] = useState("");
+  const [activeTimers, setActiveTimers] = useState<{ [key: string]: boolean }>({});
 
   // Check for user email on load
   useEffect(() => {
-    const storedEmail = localStorage.getItem("userEmail");
-    if (storedEmail) {
-      setEmail(storedEmail);
-    } else {
-      router.push("/"); // Redirect to login if no email found
-    }
+    const checkAuth = async () => {
+      try {
+        await pb.authStore.loadFromCookie(document.cookie);
+        const user = pb.authStore.model;
+
+        if (!user) {
+          router.push("/login"); // Redirect if not authenticated
+        } else {
+          setEmail(user.email);
+        }
+      } catch (error) {
+        console.error("Auth error:", error);
+        router.push("/login");
+      }
+    };
+
+    checkAuth();
   }, [router]);
 
   // Live Clock using native JS Date
@@ -44,47 +57,62 @@ const GenerateQrPage = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Check for existing timers on load
+  // Fetch existing QR code data from PocketBase
   useEffect(() => {
-    const timers: { [key: string]: string } = {};
+    const checkActiveTimers = async () => {
+      const timers: { [key: string]: boolean } = {};
 
-    courses.forEach((course) => {
-      const date = dayjs().format("YYYY-MM-DD");
-      const qrKey = `${course}-${date}`;
-      const startTime = localStorage.getItem(qrKey);
+      for (const course of courses) {
+        const date = dayjs().format("YYYY-MM-DD");
+        try {
+          const qrCodeData = await pb
+            .collection("qrcodes")
+            .getFirstListItem(`course = "${course}" && date = "${date}"`);
 
-      if (startTime) {
-        const now = dayjs();
-        const start = dayjs(startTime);
-        const diff = now.diff(start, "second");
-
-        if (diff < 600) {
-          // Timer is still active
-          const remaining = dayjs.duration(600 - diff, "seconds");
-          timers[qrKey] = remaining.format("mm:ss");
-        } else {
-          // Timer expired
-          localStorage.removeItem(qrKey);
+          const expiresAt = dayjs(qrCodeData.expiresAt);
+          const now = dayjs();
+          
+          // If QR code exists and expiration time is greater than the current time, it's active
+          if (expiresAt.isAfter(now)) {
+            timers[course] = true;
+          } else {
+            timers[course] = false;
+          }
+        } catch (error) {
+          // If no QR code found for the course on that date, assume it's inactive
+          timers[course] = false;
         }
       }
-    });
 
-    setActiveTimers(timers);
+      setActiveTimers(timers);
+    };
+
+    checkActiveTimers();
   }, []);
 
-  const handleQrAction = (course: string) => {
+  const handleQrAction = async (course: string) => {
     const date = dayjs().format("YYYY-MM-DD");
-    const qrKey = `${course}-${date}`;
+    const expiresAt = dayjs().add(10, "minutes").format("YYYY-MM-DD HH:mm:ss"); // Expire in 10 minutes
+    const qrData = `${course} - ${date}`;
 
-    if (activeTimers[qrKey]) {
-      // If an active timer exists, go to the QR Code
-      router.push(`/qrcode?course=${encodeURIComponent(course)}&date=${date}`);
+    if (activeTimers[course]) {
+      // If an active timer exists, go to the QR Code page
+      router.push(`/qrcode?course=${encodeURIComponent(course)}&date=${date}&expiresAt=${expiresAt}`);
     } else {
-      // Start a new QR Code timer
-      const startTime = dayjs().toISOString();
-      localStorage.setItem(qrKey, startTime);
+      try {
+        // Create new QR code if it doesn't exist or expired
+        await pb.collection("qrcodes").create({
+          course,
+          date, // Save the full date format
+          qrData,
+          expiresAt, // Set expiration time (10 minutes from now)
+        });
 
-      router.push(`/qrcode?course=${encodeURIComponent(course)}&date=${date}`);
+        // After generating, redirect to QR Code page
+        router.push(`/qrcode?course=${encodeURIComponent(course)}&date=${date}&expiresAt=${expiresAt}`);
+      } catch (error) {
+        console.error("Error creating QR code:", error);
+      }
     }
   };
 
@@ -99,9 +127,7 @@ const GenerateQrPage = () => {
       </h1>
       <ul className="space-y-4">
         {courses.map((course) => {
-          const date = dayjs().format("YYYY-MM-DD");
-          const qrKey = `${course}-${date}`;
-          const isActive = !!activeTimers[qrKey];
+          const isActive = !!activeTimers[course];
 
           return (
             <li

@@ -1,94 +1,54 @@
-"use client";
+"use client"
 import React, { useEffect, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import PocketBase from "pocketbase";
 import { QRCodeCanvas } from "qrcode.react";
-import dayjs from "dayjs";
-import duration from "dayjs/plugin/duration";
-import studentsData from "@/data/studenti.json";  // Importing the list of students
-dayjs.extend(duration);
+import { useRouter } from "next/navigation";
+
+const pb = new PocketBase("http://127.0.0.1:8090");
+pb.autoCancellation(false)
+
 
 const QrCodePage = () => {
-  const searchParams = useSearchParams();
   const router = useRouter();
+
+  const searchParams = useSearchParams();
   const [qrData, setQrData] = useState("");
   const [course, setCourse] = useState("");
   const [date, setDate] = useState("");
-  const [remainingTime, setRemainingTime] = useState("10:00");
-  const [isExpired, setIsExpired] = useState(false);
-  const [isTimerLoading, setIsTimerLoading] = useState(true);  // Loading state only for the timer
-  const [selectedStudent, setSelectedStudent] = useState("");  // Track selected student
-  const [students] = useState(studentsData); // List of all students from the file
+  const [expiresAt, setExpiresAt] = useState("");
+  const [qrCode, setQrCode] = useState(null);
 
   useEffect(() => {
-    const courseParam = searchParams.get("course");
-    const dateParam = searchParams.get("date");
-
-    if (courseParam && dateParam) {
-      setCourse(courseParam);
-      setDate(dateParam);
-      setQrData(`${courseParam} - ${dateParam}`);
-
-      const qrKey = `${courseParam}-${dateParam}`;
-      let startTime = localStorage.getItem(qrKey);
-
-      // If no start time, set a new one
-      if (!startTime) {
-        startTime = dayjs().toISOString();
-        localStorage.setItem(qrKey, startTime);
-      }
-
-      // Countdown interval
-      const interval = setInterval(() => {
-        const now = dayjs();
-        const start = dayjs(startTime);
-        const diff = now.diff(start, "second");
-        const duration = dayjs.duration(600 - diff, "seconds");
-
-        if (diff >= 600) {
-          setIsExpired(true);
-          clearInterval(interval);
-        } else {
-          setRemainingTime(duration.format("mm:ss"));
-          setIsTimerLoading(false); // Timer is ready
+    const fetchQrCode = async () => {
+      const courseParam = searchParams.get("course");
+      const expiresAtParam = searchParams.get("expiresAt");
+      console.log('crcodepage expires at:'+''+expiresAtParam)
+    
+      if (courseParam && expiresAtParam) {
+        setCourse(courseParam);
+        setExpiresAt(expiresAtParam);
+    
+        try {
+          // Ensure the expiresAtParam is in the same format as stored in the database
+          const qrCodeData = await pb.collection("qrcodes").getFirstListItem(
+            `course = "${courseParam}"`
+          );
+    
+          if (qrCodeData) {
+            setQrCode(qrCodeData.qrData);  // Set the qrData if found
+          } else {
+            console.error("QR Code not found!");
+          }
+        } catch (error) {
+          console.error("Error fetching QR Code:", error);
         }
-      }, 1000);
-
-      return () => clearInterval(interval);
-    } else {
-      router.push("/generate");
-    }
-  }, [searchParams, router]);
-
-  useEffect(() => {
-    // Fetch scanned students from localStorage on page load
-    const storedScannedStudents = localStorage.getItem("scannedStudents");
-    if (storedScannedStudents) {
-      setScannedStudents(JSON.parse(storedScannedStudents));
-    }
-  }, []);
-
-  const handleAddStudent = () => {
-    if (selectedStudent) {
-      // Find selected student from the studentsData list
-      const student = students.find((s) => `${s.name} ${s.surname}` === selectedStudent);
-      if (student) {
-        const newScannedStudents = [
-          ...scannedStudents,
-          { name: student.name, surname: student.surname, scannedAt: dayjs().toISOString() },
-        ];
-
-        // Save to localStorage
-        localStorage.setItem("scannedStudents", JSON.stringify(newScannedStudents));
-
-        // Update the state to reflect the change
-        setScannedStudents(newScannedStudents);
-        setSelectedStudent("");  // Clear dropdown selection after adding
       }
-    }
-  };
+    };
+    
 
-  // Retrieve the list of scanned students from localStorage
-  const [scannedStudents, setScannedStudents] = useState<{ name: string; surname: string; scannedAt: string }[]>([]);
+    fetchQrCode();
+  }, [searchParams]);
 
   return (
     <div className="w-full max-w-md mx-auto p-6 bg-white rounded-2xl shadow-md text-center mb-64 mt-24">
@@ -97,28 +57,18 @@ const QrCodePage = () => {
       <p className="text-gray-600 mb-6">{date}</p>
 
       <div className="flex justify-center mb-4">
-        <div className="bg-gray-100 p-4 rounded-lg inline-block">
-          <QRCodeCanvas
-            value={qrData}
-            size={200}
-            bgColor={"#ffffff"}
-            fgColor={"#000000"}
-            level={"H"}
-          />
-        </div>
-      </div>
-
-      <div className="mt-4">
-        {!isExpired ? (
-          <div>
-            {isTimerLoading ? (
-              <p className="text-gray-600 font-semibold">Učitavanje vremena...</p>
-            ) : (
-              <p className="text-red-600 font-semibold">Vrijeme do isteka: {remainingTime}</p>
-            )}
+        {qrCode ? (
+          <div className="bg-gray-100 p-4 rounded-lg inline-block">
+            <QRCodeCanvas
+              value={qrCode}
+              size={200}
+              bgColor={"#ffffff"}
+              fgColor={"#000000"}
+              level={"H"}
+            />
           </div>
         ) : (
-          <p className="text-red-600 font-bold text-lg">QR Kod je istekao!</p>
+          <p>QR Code not found!</p>
         )}
       </div>
 
@@ -129,48 +79,6 @@ const QrCodePage = () => {
         >
           Povratak
         </button>
-      </div>
-
-      {/* Dropdown to select and add a student */}
-      <div className="mt-6">
-        <label htmlFor="studentSelect" className="block text-sm font-semibold mb-2">
-          Odaberite studenta ručno:
-        </label>
-        <select
-          id="studentSelect"
-          value={selectedStudent}
-          onChange={(e) => setSelectedStudent(e.target.value)}
-          className="border border-gray-300 p-2 rounded-lg w-full mb-4"
-        >
-          <option value="">Odaberite studenta</option>
-          {students.map((student, index) => (
-            <option key={index} value={`${student.name} ${student.surname}`}>
-              {student.name} {student.surname}
-            </option>
-          ))}
-        </select>
-        <button
-          onClick={handleAddStudent}
-          className="bg-indigo-600 text-white px-4 py-2 rounded-lg shadow hover:bg-indigo-500 w-full"
-        >
-          Dodaj studenta
-        </button>
-      </div>
-
-      {/* Display list of students who have scanned the QR code */}
-      <div className="mt-8">
-        <h3 className="text-lg font-semibold mb-2">Studenti koji su skenirali QR kod:</h3>
-        <ul className="list-disc pl-5">
-          {scannedStudents.length === 0 ? (
-            <li className="text-gray-600">Nema studenata koji su skenirali QR kod.</li>
-          ) : (
-            scannedStudents.map((student, index) => (
-              <li key={index} className="text-gray-700">
-                {student.name} {student.surname} - {dayjs(student.scannedAt).format("HH:mm:ss")}
-              </li>
-            ))
-          )}
-        </ul>
       </div>
     </div>
   );
