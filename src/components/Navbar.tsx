@@ -1,77 +1,54 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import PocketBase from "pocketbase";
+import { useRouter } from "next/navigation";
+
+const pb = new PocketBase("http://127.0.0.1:8090");
 
 const Navbar = () => {
-  const [user, setUser] = useState<string>("");
+  const router = useRouter();
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [, forceUpdate] = useState(0); // Force component update
 
-  // This ensures the user state is set correctly when the page is loaded
   useEffect(() => {
-    const storedEmail = localStorage.getItem("userEmail");
+    const checkUser = async () => {
+      await pb.authStore.loadFromCookie(document.cookie);
+      setUserEmail(pb.authStore.model?.email || null);
+    };
 
-    // If there's an email in localStorage, set it; otherwise, set it to "Guest"
-    setUser(storedEmail || "Guest");
-  }, []); // Empty dependency array to only run once on mount
+    checkUser();
 
-  const handleLogout = () => {
-    localStorage.clear();
-    setUser("Guest"); // Update the state after logging out
+    // Listen for authentication state changes
+    const unsubscribe = pb.authStore.onChange(() => {
+      setUserEmail(pb.authStore.model?.email || null);
+      forceUpdate((prev) => prev + 1); // Force component re-render
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    pb.authStore.clear();
+    setUserEmail(null);
+    forceUpdate((prev) => prev + 1); // Force re-render
+    router.push("/");
   };
 
   return (
     <div className="navbar bg-base-100">
       <div className="navbar-start">
-        <div className="dropdown">
-          <div tabIndex={0} role="button" className="btn btn-ghost lg:hidden">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M4 6h16M4 12h8m-8 6h16"
-              />
-            </svg>
-          </div>
-          <ul
-            tabIndex={0}
-            className="menu menu-sm dropdown-content bg-base-100 rounded-box z-[1] mt-3 w-52 p-2 shadow"
-          >
-            {/* Only show this if the user is a guest */}
-            {user === "Guest" && (
-              <>
-                <li>
-                  <p>{user}</p>
-                  <ul className="p-2">
-                    <li>
-                      <a>Pregled kolegija</a>
-                    </li>
-                    <li>
-                      <a>Postavke</a>
-                    </li>
-                  </ul>
-                </li>
-              </>
-            )}
-          </ul>
-        </div>
         <Link href="/" className="btn btn-ghost text-xl">
           FESB
         </Link>
       </div>
 
       <div className="navbar-center hidden lg:flex">
-        {/* Display the menu for logged-in users */}
-        {user !== "Guest" && (
+        {userEmail ? (
           <ul className="menu menu-horizontal px-1">
             <li>
               <details>
-                <summary>{user}</summary>
+                <summary>{userEmail}</summary>
                 <ul className="p-2">
                   <li className="border-[1px] rounded-xl my-4">
                     <a>Pregled kolegija</a>
@@ -83,13 +60,21 @@ const Navbar = () => {
               </details>
             </li>
           </ul>
+        ) : (
+          <span className="text-gray-500">Gost</span>
         )}
       </div>
 
       <div className="navbar-end">
-        <Link href="/" className="btn" onClick={handleLogout}>
-          Odjava
-        </Link>
+        {userEmail ? (
+          <button className="btn" onClick={handleLogout}>
+            Odjava
+          </button>
+        ) : (
+          <Link href="/login" className="btn">
+            Prijava
+          </Link>
+        )}
       </div>
     </div>
   );
