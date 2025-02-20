@@ -30,6 +30,7 @@ const Navbar = () => {
 
   const handleLogout = async () => {
     pb.authStore.clear();
+    localStorage.clear();
     setUserEmail(null);
     forceUpdate((prev) => prev + 1); // Force re-render
     router.push("/");

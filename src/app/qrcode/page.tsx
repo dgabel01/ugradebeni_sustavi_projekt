@@ -21,7 +21,11 @@ const QrCodePage = () => {
   const [qrCode, setQrCode] = useState(null);
   const [timeLeft, setTimeLeft] = useState("");
   const [selectedStudent, setSelectedStudent] = useState("");
-  const [addedStudents, setAddedStudents] = useState<{ name: string; surname: string }[]>([]); // Store manually added students
+  const [addedStudents, setAddedStudents] = useState<
+    { name: string; surname: string }[]
+  >([]); // Store manually added students
+  const [qrCodeId, setQrCodeId] = useState(""); // Store the ID
+
 
   useEffect(() => {
     const fetchQrCode = async () => {
@@ -30,9 +34,9 @@ const QrCodePage = () => {
       if (!courseParam) return;
 
       try {
-        const qrCodeData = await pb.collection("qrcodes").getFirstListItem(
-          `course = "${courseParam}"`
-        );
+        const qrCodeData = await pb
+          .collection("qrcodes")
+          .getFirstListItem(`course = "${courseParam}"`);
 
         if (qrCodeData) {
           setQrCode(qrCodeData.qrData);
@@ -49,56 +53,155 @@ const QrCodePage = () => {
     fetchQrCode();
   }, [searchParams]);
 
+  useEffect(() => {
+    const fetchQrCode = async () => {
+      const courseParam = searchParams.get("course");
+  
+      if (!courseParam) return;
+  
+      try {
+        const qrCodeData = await pb
+          .collection("qrcodes")
+          .getFirstListItem(`course = "${courseParam}"`);
+  
+        if (qrCodeData) {
+          setQrCode(qrCodeData.qrData);
+          setQrCodeId(qrCodeData.id); // Store the QR Code ID
+          setExpiresAt(qrCodeData.expiresAt);
+          setCourse(courseParam);
+        } else {
+          console.error("QR Code not found!");
+        }
+      } catch (error) {
+        console.error("Error fetching QR Code:", error);
+      }
+    };
+  
+    fetchQrCode();
+  }, [searchParams]);
+
   // Load manually added students from localStorage
   useEffect(() => {
-    const storedStudents = localStorage.getItem("addedStudents");
-    if (storedStudents) {
-      setAddedStudents(JSON.parse(storedStudents));
-    }
-  }, []);
-
+    const fetchStudents = async () => {
+      if (!qrCode) return;
+  
+      try {
+        const studentRecords = await pb.collection("students").getFullList({
+          filter: `qrCode = "${qrCode}"`, // Fetch students for this QR code
+        });
+  
+        const formattedStudents = studentRecords.map((record: any) => ({
+          name: record.name,
+          surname: record.surname,
+        }));
+        setAddedStudents(formattedStudents);
+      } catch (error) {
+        console.error("Error fetching students:", error);
+      }
+    };
+  
+    fetchStudents();
+  }, [qrCode]);
+  
   // Countdown Timer Effect
-  // Countdown Timer Effect
-useEffect(() => {
-  if (!expiresAt) return;
+  useEffect(() => {
+    if (!expiresAt) return;
 
-  const updateTimer = () => {
-    const now = dayjs();
-    const expirationTime = dayjs(expiresAt);
-    const diff = expirationTime.diff(now);
+    const updateTimer = () => {
+      const now = dayjs();
+      const expirationTime = dayjs(expiresAt);
+      const diff = expirationTime.diff(now);
 
-    if (diff <= 0) {
-      setTimeLeft("QR kod istekao"); // Stop timer and show expiration message
-      return;
-    }
+      if (diff <= 0) {
+        setTimeLeft("QR kod istekao"); // Stop timer and show expiration message
+        return;
+      }
 
-    const durationObj = dayjs.duration(diff);
-    const minutes = durationObj.minutes();
-    const seconds = durationObj.seconds();
-    setTimeLeft(`${minutes}m ${seconds}s`);
-  };
+      const durationObj = dayjs.duration(diff);
+      const minutes = durationObj.minutes();
+      const seconds = durationObj.seconds();
+      setTimeLeft(`${minutes}m ${seconds}s`);
+    };
 
-  updateTimer();
-  const interval = setInterval(updateTimer, 1000);
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000);
 
-  return () => clearInterval(interval);
-}, [expiresAt]);
-
+    return () => clearInterval(interval);
+  }, [expiresAt]);
 
   // Add student to the local list and save to localStorage
-  const handleAddStudent = () => {
-    if (!selectedStudent) return;
-
+  const handleAddStudent = async () => {
+    if (!selectedStudent || !qrCodeId) {
+      console.error("Error: Student or QR Code ID is missing.");
+      return;
+    }
+  
     const newStudent = studentsData.find(
-      (student: { name: string; surname: string }) => `${student.name} ${student.surname}` === selectedStudent
+      (student: { name: string; surname: string }) =>
+        `${student.name} ${student.surname}` === selectedStudent
     );
-
-    if (newStudent && !addedStudents.some(s => s.name === newStudent.name && s.surname === newStudent.surname)) {
-      const updatedStudents = [...addedStudents, newStudent];
-      setAddedStudents(updatedStudents);
-      localStorage.setItem("addedStudents", JSON.stringify(updatedStudents));
+  
+    if (!newStudent) {
+      console.error("Student not found in local data");
+      return;
+    }
+  
+    try {
+      const filterQuery = `name="${newStudent.name}" && surname="${newStudent.surname}"`;
+  
+      try {
+        const existingStudent = await pb.collection("students").getFirstListItem(filterQuery);
+  
+        if (existingStudent) {
+          await pb.collection("students").update(existingStudent.id, { qrCode: qrCodeId });
+          console.log("Student updated with QR Code:", existingStudent.id);
+        }
+      } catch (error) {
+        if (error instanceof Error && (error as any).status === 404) {
+          console.log("Student not found, creating new record...");
+          await pb.collection("students").create({
+            name: newStudent.name,
+            surname: newStudent.surname,
+            qrCode: qrCodeId,
+            scannedAt: new Date().toISOString(),
+          });
+          console.log("New student added and linked to QR Code.");
+        } else {
+          console.error("Error checking/adding student:", error);
+        }
+      }
+  
+      await fetchStudents(); 
+    } catch (error) {
+      console.error("Error adding student:", error);
     }
   };
+
+  const fetchStudents = async () => {
+    if (!qrCodeId) return;
+  
+    try {
+      const studentRecords = await pb.collection("students").getFullList({
+        filter: `qrCode = "${qrCodeId}"`, // Fetch students linked to this QR code
+      });
+  
+      const formattedStudents = studentRecords.map((record: any) => ({
+        name: record.name,
+        surname: record.surname,
+      }));
+  
+      setAddedStudents(formattedStudents); 
+    } catch (error) {
+      console.error("Error fetching students:", error);
+    }
+  };
+  
+  // Fetch students when QR Code ID is available
+  useEffect(() => {
+    fetchStudents();
+  }, [qrCodeId]); 
+  
+  
 
   return (
     <div className="w-full max-w-md mx-auto p-6 bg-white rounded-2xl shadow-md text-center mb-64 mt-24">
@@ -157,7 +260,9 @@ useEffect(() => {
 
       {/* List of added students */}
       <div className="mt-6 text-left">
-        <h3 className="text-lg font-semibold text-gray-700">Evidentirani studenti:</h3>
+        <h3 className="text-lg font-semibold text-gray-700">
+          Evidentirani studenti:
+        </h3>
         <ul className="mt-2">
           {addedStudents.length > 0 ? (
             addedStudents.map((student, index) => (
