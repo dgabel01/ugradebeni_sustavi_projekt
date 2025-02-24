@@ -8,6 +8,12 @@ import dayjs from "dayjs";
 import duration from "dayjs/plugin/duration";
 import studentsData from "@/data/studenti.json"; // Import students from JSON
 
+
+//isti user za 2 qr koda-error(overwrite)
+
+
+//isti user za 2 qr koda-error(overwrite)
+
 dayjs.extend(duration);
 
 const pb = new PocketBase("http://127.0.0.1:8090");
@@ -21,27 +27,23 @@ const QrCodePage = () => {
   const [qrCode, setQrCode] = useState(null);
   const [timeLeft, setTimeLeft] = useState("");
   const [selectedStudent, setSelectedStudent] = useState("");
-  const [addedStudents, setAddedStudents] = useState<
-    { name: string; surname: string }[]
-  >([]); // Store manually added students
-  const [qrCodeId, setQrCodeId] = useState(""); // Store the ID
-
+  const [addedStudents, setAddedStudents] = useState<{ name: string; surname: string }[]>([]);
+  const [qrCodeId, setQrCodeId] = useState("");
+  const [isExpired, setIsExpired] = useState(false);
 
   useEffect(() => {
     const fetchQrCode = async () => {
       const courseParam = searchParams.get("course");
-
       if (!courseParam) return;
 
       try {
-        const qrCodeData = await pb
-          .collection("qrcodes")
-          .getFirstListItem(`course = "${courseParam}"`);
-
+        const qrCodeData = await pb.collection("qrcodes").getFirstListItem(`course = "${courseParam}"`);
         if (qrCodeData) {
           setQrCode(qrCodeData.qrData);
-          setExpiresAt(qrCodeData.expiresAt);
+          setQrCodeId(qrCodeData.id);
+          setExpiresAt(qrCodeData.expiresAt);  // This is the expiration time from the database
           setCourse(courseParam);
+          setIsExpired(qrCodeData.expired);
         } else {
           console.error("QR Code not found!");
         }
@@ -53,92 +55,88 @@ const QrCodePage = () => {
     fetchQrCode();
   }, [searchParams]);
 
+  // Countdown timer effect
   useEffect(() => {
-    const fetchQrCode = async () => {
-      const courseParam = searchParams.get("course");
-  
-      if (!courseParam) return;
-  
-      try {
-        const qrCodeData = await pb
-          .collection("qrcodes")
-          .getFirstListItem(`course = "${courseParam}"`);
-  
-        if (qrCodeData) {
-          setQrCode(qrCodeData.qrData);
-          setQrCodeId(qrCodeData.id); // Store the QR Code ID
-          setExpiresAt(qrCodeData.expiresAt);
-          setCourse(courseParam);
-        } else {
-          console.error("QR Code not found!");
-        }
-      } catch (error) {
-        console.error("Error fetching QR Code:", error);
-      }
-    };
-  
-    fetchQrCode();
-  }, [searchParams]);
+    if (!expiresAt || isExpired) return;
 
-  // Load manually added students from localStorage
+    const expirationTime = dayjs(expiresAt);  // Parse the expiresAt field correctly into a dayjs object
+    const now = dayjs(); // Current time
+
+    // Calculate the remaining time
+    const diff = expirationTime.diff(now);  // Difference between current time and expiration
+
+    if (diff <= 0) {
+      setTimeLeft("QR kod istekao");
+      setIsExpired(true);
+
+      // Update expired flag in the database
+      const updateExpiredFlag = async () => {
+        try {
+          await pb.collection("qrcodes").update(qrCodeId, { expired: true });
+          console.log("QR Code marked as expired.");
+        } catch (error) {
+          console.error("Error updating expiration:", error);
+        }
+      };
+
+      updateExpiredFlag();
+      return;
+    }
+
+    const updateTimer = () => {
+      const now = dayjs();
+      const diff = expirationTime.diff(now);  // Update difference in time
+
+      if (diff <= 0) {
+        setTimeLeft("QR kod istekao");
+        setIsExpired(true);
+        return;
+      }
+
+      const durationObj = dayjs.duration(diff);
+      const minutes = Math.floor(diff / 60000);  // Convert ms to minutes
+      const seconds = Math.floor((diff % 60000) / 1000);  // Remaining seconds
+      setTimeLeft(`${minutes}m ${seconds}s`);
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 1000); // Update timer every second
+
+    return () => clearInterval(interval);
+  }, [expiresAt, isExpired, qrCodeId]);
+
+  // Load manually added students from PocketBase
   useEffect(() => {
     const fetchStudents = async () => {
-      if (!qrCode) return;
-  
+      if (!qrCodeId) return;
+
       try {
         const studentRecords = await pb.collection("students").getFullList({
-          filter: `qrCode = "${qrCode}"`, // Fetch students for this QR code
+          filter: `qrCode = "${qrCodeId}"`,
         });
-  
-        const formattedStudents = studentRecords.map((record: any) => ({
+
+        const formattedStudents = studentRecords.map((record) => ({
           name: record.name,
           surname: record.surname,
         }));
+
         setAddedStudents(formattedStudents);
       } catch (error) {
         console.error("Error fetching students:", error);
       }
     };
-  
+
     fetchStudents();
-  }, [qrCode]);
-  
-  // Countdown Timer Effect
-  useEffect(() => {
-    if (!expiresAt) return;
+  }, [qrCodeId]);
 
-    const updateTimer = () => {
-      const now = dayjs();
-      const expirationTime = dayjs(expiresAt);
-      const diff = expirationTime.diff(now);
-
-      if (diff <= 0) {
-        setTimeLeft("QR kod istekao"); // Stop timer and show expiration message
-        return;
-      }
-
-      const durationObj = dayjs.duration(diff);
-      const minutes = durationObj.minutes();
-      const seconds = durationObj.seconds();
-      setTimeLeft(`${minutes}m ${seconds}s`);
-    };
-
-    updateTimer();
-    const interval = setInterval(updateTimer, 1000);
-
-    return () => clearInterval(interval);
-  }, [expiresAt]);
-
-  // Add student to the local list and save to localStorage
   const handleAddStudent = async () => {
-    if (!selectedStudent || !qrCodeId) {
-      console.error("Error: Student or QR Code ID is missing.");
+    if (!selectedStudent || !qrCodeId || isExpired) {
+      console.error("Error: Student or QR Code ID is missing, or QR is expired.");
       return;
     }
   
     const newStudent = studentsData.find(
-      (student: { name: string; surname: string }) =>
-        `${student.name} ${student.surname}` === selectedStudent
+      (student) => `${student.name} ${student.surname}` === selectedStudent
     );
   
     if (!newStudent) {
@@ -147,60 +145,28 @@ const QrCodePage = () => {
     }
   
     try {
-      const filterQuery = `name="${newStudent.name}" && surname="${newStudent.surname}"`;
+      // Check if the student has already scanned THIS specific QR code
+      const filterQuery = `name="${newStudent.name}" && surname="${newStudent.surname}" && qrCode="${qrCodeId}"`;
+      const existingScans = await pb.collection("students").getFirstListItem(filterQuery).catch(() => null);
   
-      try {
-        const existingStudent = await pb.collection("students").getFirstListItem(filterQuery);
-  
-        if (existingStudent) {
-          await pb.collection("students").update(existingStudent.id, { qrCode: qrCodeId });
-          console.log("Student updated with QR Code:", existingStudent.id);
-        }
-      } catch (error) {
-        if (error instanceof Error && (error as any).status === 404) {
-          console.log("Student not found, creating new record...");
-          await pb.collection("students").create({
-            name: newStudent.name,
-            surname: newStudent.surname,
-            qrCode: qrCodeId,
-            scannedAt: new Date().toISOString(),
-          });
-          console.log("New student added and linked to QR Code.");
-        } else {
-          console.error("Error checking/adding student:", error);
-        }
+      if (existingScans) {
+        console.log("Student has already scanned this QR Code.");
+        return;
       }
   
-      await fetchStudents(); 
+      // If not, create a new record for this QR code scan
+      await pb.collection("students").create({
+        name: newStudent.name,
+        surname: newStudent.surname,
+        qrCode: qrCodeId,
+        scannedAt: new Date().toISOString(),
+      });
+  
+      setAddedStudents([...addedStudents, newStudent]);
     } catch (error) {
       console.error("Error adding student:", error);
     }
   };
-
-  const fetchStudents = async () => {
-    if (!qrCodeId) return;
-  
-    try {
-      const studentRecords = await pb.collection("students").getFullList({
-        filter: `qrCode = "${qrCodeId}"`, // Fetch students linked to this QR code
-      });
-  
-      const formattedStudents = studentRecords.map((record: any) => ({
-        name: record.name,
-        surname: record.surname,
-      }));
-  
-      setAddedStudents(formattedStudents); 
-    } catch (error) {
-      console.error("Error fetching students:", error);
-    }
-  };
-  
-  // Fetch students when QR Code ID is available
-  useEffect(() => {
-    fetchStudents();
-  }, [qrCodeId]); 
-  
   
 
   return (
@@ -227,7 +193,6 @@ const QrCodePage = () => {
         )}
       </div>
 
-      {/* Dropdown for selecting a student */}
       <div className="mt-6">
         <label className="block text-gray-700 font-semibold mb-2">
           Odaberi Studenta:
@@ -236,6 +201,7 @@ const QrCodePage = () => {
           value={selectedStudent}
           onChange={(e) => setSelectedStudent(e.target.value)}
           className="w-full p-2 border rounded-lg"
+          disabled={isExpired}
         >
           <option value="">-- Odaberi --</option>
           {studentsData.map((student, index) => (
@@ -247,7 +213,12 @@ const QrCodePage = () => {
 
         <button
           onClick={handleAddStudent}
-          className="mt-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow hover:bg-green-500"
+          className={`mt-4 px-4 py-2 rounded-lg shadow ${
+            isExpired
+              ? "bg-gray-400 cursor-not-allowed"
+              : "bg-green-600 text-white hover:bg-green-500"
+          }`}
+          disabled={isExpired}
         >
           Dodaj ručno
         </button>
@@ -258,11 +229,8 @@ const QrCodePage = () => {
         </p>
       </div>
 
-      {/* List of added students */}
       <div className="mt-6 text-left">
-        <h3 className="text-lg font-semibold text-gray-700">
-          Evidentirani studenti:
-        </h3>
+        <h3 className="text-lg font-semibold text-gray-700">Evidentirani studenti:</h3>
         <ul className="mt-2">
           {addedStudents.length > 0 ? (
             addedStudents.map((student, index) => (

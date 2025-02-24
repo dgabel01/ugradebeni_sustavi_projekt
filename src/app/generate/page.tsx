@@ -11,9 +11,9 @@ const pb = new PocketBase("http://127.0.0.1:8090"); // Adjust to your PocketBase
 pb.autoCancellation(false);
 
 const courses = [
-  "Operacijski sustavi",
-  "Arhitektura digitalnih računala",
-  "Ugradbeni računalni sustavi",
+  "Operacijski sustavi 250",
+  "Arhitektura digitalnih računala 120",
+  "Ugradbeni računalni sustavi 250",
 ];
 
 const GenerateQrPage = () => {
@@ -122,7 +122,7 @@ const GenerateQrPage = () => {
       <h1 className="text-2xl font-bold text-gray-700 mb-4">
         Pozdrav, {email || "Gost"}!
       </h1>
-      <p className="text-gray-600 mb-6">Datum i vrijeme: {currentDateTime}</p>
+      <p className="text-gray-600 mb-6 text-2xl">Datum i vrijeme: {currentDateTime}</p>
       <h1 className="text-2xl font-bold text-gray-700 mb-6">
         Današnji Popis Kolegija
       </h1>

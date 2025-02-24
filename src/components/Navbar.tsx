@@ -3,13 +3,20 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import PocketBase from "pocketbase";
 import { useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import Webcam from "react-webcam";
+import Image from "next/image";
+import fesbLogo from "../../public/fesb-logo.webp"
 
 const pb = new PocketBase("http://127.0.0.1:8090");
 
 const Navbar = () => {
+  const pathname = usePathname();
   const router = useRouter();
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [, forceUpdate] = useState(0); // Force component update
+  const [isStudentView, SetisStudentView] = useState<boolean>(false);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
 
   useEffect(() => {
     const checkUser = async () => {
@@ -18,15 +25,15 @@ const Navbar = () => {
     };
 
     checkUser();
+    checkStudentView(pathname);
 
-    // Listen for authentication state changes
     const unsubscribe = pb.authStore.onChange(() => {
       setUserEmail(pb.authStore.model?.email || null);
-      forceUpdate((prev) => prev + 1); // Force component re-render
+      forceUpdate((prev) => prev + 1);
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [pathname]); // Include pathname as a dependency
 
   const handleLogout = async () => {
     pb.authStore.clear();
@@ -36,11 +43,19 @@ const Navbar = () => {
     router.push("/");
   };
 
+  const checkStudentView = (pathname: string) => {
+    SetisStudentView(pathname === "/student");
+  };
+
+  const toggleCamera = () => {
+    setIsCameraOpen((prevState) => !prevState);
+  };
+
   return (
     <div className="navbar bg-base-100">
       <div className="navbar-start">
         <Link href="/" className="btn btn-ghost text-xl">
-          FESB
+          <Image src={fesbLogo} width={64} alt="navbar-logo"/>
         </Link>
       </div>
 
@@ -66,17 +81,37 @@ const Navbar = () => {
         )}
       </div>
 
+      {isStudentView && (
+        <button
+          onClick={toggleCamera}
+          className=" ml-4 bg-blue-600 text-white p-2 w-32 rounded-lg shadow hover:bg-blue-500 font-bold text-nowrap"
+        >
+          {isCameraOpen ? "Zatvori kameru" : "Otvori kameru"}
+        </button>
+      )}
+
       <div className="navbar-end">
         {userEmail ? (
           <button className="btn" onClick={handleLogout}>
             Odjava
           </button>
         ) : (
-          <Link href="/login" className="btn">
+          <Link href="/" className="btn">
             Prijava
           </Link>
         )}
       </div>
+      {/* Webcam feed */}
+      {isCameraOpen && (
+        <div className="mt-6">
+          <Webcam
+            audio={false}
+            screenshotFormat="image/jpeg"
+            width="100%"
+            videoConstraints={{ facingMode: "environment" }}
+          />
+        </div>
+      )}
     </div>
   );
 };
