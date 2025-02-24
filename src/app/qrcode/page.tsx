@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation";
 import dayjs from "dayjs";
 import duration from "dayjs/plugin/duration";
 import studentsData from "@/data/studenti.json"; // Import students from JSON
+import utc from "dayjs/plugin/utc";
+
 
 
 //isti user za 2 qr koda-error(overwrite)
@@ -15,6 +17,7 @@ import studentsData from "@/data/studenti.json"; // Import students from JSON
 //isti user za 2 qr koda-error(overwrite)
 
 dayjs.extend(duration);
+dayjs.extend(utc);
 
 const pb = new PocketBase("http://127.0.0.1:8090");
 pb.autoCancellation(false);
@@ -58,17 +61,25 @@ const QrCodePage = () => {
   // Countdown timer effect
   useEffect(() => {
     if (!expiresAt || isExpired) return;
-
-    const expirationTime = dayjs(expiresAt);  // Parse the expiresAt field correctly into a dayjs object
-    const now = dayjs(); // Current time
-
-    // Calculate the remaining time
-    const diff = expirationTime.diff(now);  // Difference between current time and expiration
-
-    if (diff <= 0) {
+  
+    // Ensure expiration time is parsed in UTC
+    let expirationTime = dayjs(expiresAt).utc();  // Parse as UTC
+    const now = dayjs().utc();  // Get current time in UTC
+  
+    // Subtract one hour from the expiration time to correct the issue
+    expirationTime = expirationTime.subtract(1, 'hour');  // Subtract 1 hour
+  
+    console.log("Adjusted Expiration Time (UTC):", expirationTime.format());  // Log adjusted expiration time
+    console.log("Current Time (UTC):", now.format());  // Log current time in UTC
+  
+    // Calculate the remaining time (in seconds)
+    const diffSeconds = expirationTime.diff(now, "seconds"); // Get difference in seconds
+    console.log("Time Difference (seconds):", diffSeconds);  // Log time difference in seconds
+  
+    if (diffSeconds <= 0) {
       setTimeLeft("QR kod istekao");
       setIsExpired(true);
-
+  
       // Update expired flag in the database
       const updateExpiredFlag = async () => {
         try {
@@ -78,32 +89,33 @@ const QrCodePage = () => {
           console.error("Error updating expiration:", error);
         }
       };
-
+  
       updateExpiredFlag();
       return;
     }
-
+  
     const updateTimer = () => {
-      const now = dayjs();
-      const diff = expirationTime.diff(now);  // Update difference in time
-
+      const now = dayjs().utc();  // Ensure we're using UTC for the current time
+      const diff = expirationTime.diff(now);  // Calculate difference in time
+  
       if (diff <= 0) {
         setTimeLeft("QR kod istekao");
         setIsExpired(true);
         return;
       }
-
-      const durationObj = dayjs.duration(diff);
+  
+      const durationObj = dayjs.duration(diff);  // Get the duration object
       const minutes = Math.floor(diff / 60000);  // Convert ms to minutes
       const seconds = Math.floor((diff % 60000) / 1000);  // Remaining seconds
       setTimeLeft(`${minutes}m ${seconds}s`);
     };
-
+  
     updateTimer();
-    const interval = setInterval(updateTimer, 1000); // Update timer every second
-
-    return () => clearInterval(interval);
+    const interval = setInterval(updateTimer, 1000);  // Update every second
+  
+    return () => clearInterval(interval);  // Cleanup the interval when the component unmounts
   }, [expiresAt, isExpired, qrCodeId]);
+  
 
   // Load manually added students from PocketBase
   useEffect(() => {

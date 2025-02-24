@@ -22,22 +22,24 @@ const LoginForm = () => {
       document.cookie = pb.authStore.exportToCookie({ httpOnly: false });
 
       if (authData.record.role === "professor") {
-        router.push("/generate"); // Redirect professors to /generate
+        router.push("/generate"); // Redirect professors
       } else if (authData.record.role === "student") {
-        router.push("/student"); // Redirect students to /student
+        router.push("/student"); // Redirect students
       } else {
         setError("Unauthorized role");
       }
-    } catch (err) {
-      console.error("Login failed:", err);
-      setError("Invalid credentials");
+    } catch (err: any) {
+      setError("Invalid email or password");
     }
   };
 
   return (
     <div className="max-w-sm mx-auto bg-white p-6 rounded shadow mt-24">
       <h2 className="text-2xl font-bold text-center mb-4">Login</h2>
+
+      {/* Error message */}
       {error && <p className="text-red-500 text-center">{error}</p>}
+
       <form onSubmit={handleLogin} className="space-y-4">
         <input
           type="email"
