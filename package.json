@@ -25,6 +25,7 @@
     "react-dom": "^19.0.0",
     "react-qr-reader": "^3.0.0-beta-1",
     "react-qr-scanner": "^1.0.0-alpha.11",
+    "react-toastify": "^11.0.5",
     "react-webcam": "^7.2.0",
     "tailwind-merge": "^3.0.1",
     "tailwindcss-animate": "^1.0.7",

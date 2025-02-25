@@ -5,6 +5,7 @@ import Webcam from "react-webcam";
 import dayjs from "dayjs";
 import jsQR from "jsqr";
 import { useRouter } from "next/navigation";
+import { ToastContainer, toast } from "react-toastify";
 
 // Create a fresh instance of PocketBase to avoid any cached auth issues
 const pb = new PocketBase("http://127.0.0.1:8090");
@@ -19,31 +20,45 @@ const StudentViewPage = () => {
   const [userData, setUserData] = useState<any>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [hasScanned, setHasScanned] = useState(() => {
+    return localStorage.getItem("hasScanned") === "true";
+  });
 
   const webcamRef = useRef<Webcam>(null);
+
+  useEffect(() => {
+    localStorage.setItem("hasScanned", hasScanned.toString());
+  }, [hasScanned]);
+
+  useEffect(() => {
+    if (scannedData) {
+      const timer = setTimeout(() => {
+        setScannedData("");
+      }, 5000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [scannedData]);
 
   // Enhanced authentication check
   useEffect(() => {
     const checkAuth = async () => {
       setAuthLoading(true);
       setAuthError(null);
-      
+
       try {
         // Make sure we load the latest cookie data
         pb.authStore.loadFromCookie(document.cookie);
-        
+
         // Check if we have a valid auth token
         if (pb.authStore.isValid) {
           console.log("Auth token is valid");
-          
+
           try {
             // Fetch the latest user data to ensure we have the most up-to-date information
-            if (pb.authStore.model) {
-              const userData = await pb.collection('users').getOne(pb.authStore.model.id);
-              setUserData(userData);
-            } else {
-              throw new Error("Auth model is null");
-            }
+            const userData = await pb
+              .collection("users")
+              .getOne(pb.authStore.model.id);
             console.log("User data successfully retrieved:", userData);
             setUserData(userData);
           } catch (userFetchError) {
@@ -53,7 +68,9 @@ const StudentViewPage = () => {
           }
         } else {
           console.log("No valid auth token found");
-          setAuthError("You're not logged in. Please log in to track attendance.");
+          setAuthError(
+            "You're not logged in. Please log in to track attendance."
+          );
         }
       } catch (error) {
         console.error("Authentication check failed:", error);
@@ -66,16 +83,16 @@ const StudentViewPage = () => {
     };
 
     checkAuth();
-    
+
     // Add event listener for storage changes (to detect login/logout in other tabs)
-    window.addEventListener('storage', (e) => {
-      if (e.key === 'pocketbase_auth') {
+    window.addEventListener("storage", (e) => {
+      if (e.key === "pocketbase_auth") {
         checkAuth();
       }
     });
-    
+
     return () => {
-      window.removeEventListener('storage', () => {});
+      window.removeEventListener("storage", () => {});
     };
   }, []);
 
@@ -97,13 +114,15 @@ const StudentViewPage = () => {
 
   const toggleCamera = () => {
     if (!userData) {
-      const shouldLogin = window.confirm("You need to be logged in to scan QR codes. Go to login page?");
+      const shouldLogin = window.confirm(
+        "You need to be logged in to scan QR codes. Go to login page?"
+      );
       if (shouldLogin) {
         router.push("/login");
       }
       return;
     }
-    
+
     setIsCameraOpen((prevState) => !prevState);
     setScannedData(""); // Clear previous scan when reopening camera
   };
@@ -128,12 +147,14 @@ const StudentViewPage = () => {
     if (qrCode) {
       setScannedData(qrCode.data);
       setIsCameraOpen(false); // Close camera after successful scan
-      
+
       // Only try to save if we have user data
       if (userData) {
         saveScanToDatabase(qrCode.data);
       } else {
-        const shouldLogin = window.confirm("You need to be logged in to record attendance. Go to login page?");
+        const shouldLogin = window.confirm(
+          "You need to be logged in to record attendance. Go to login page?"
+        );
         if (shouldLogin) {
           router.push("/login?redirect=student");
         }
@@ -143,84 +164,76 @@ const StudentViewPage = () => {
 
   // Save scanned QR to PocketBase
   const saveScanToDatabase = async (qrCodeData: string) => {
-    // Double-check authentication again
     if (!userData) {
       console.error("Cannot save scan: No user data available");
-      const shouldLogin = window.confirm("Session expired. Please log in again to record attendance.");
+      const shouldLogin = window.confirm(
+        "Session expired. Please log in again to record attendance."
+      );
       if (shouldLogin) {
         router.push("/login?redirect=student");
       }
       return;
     }
-  
+
     try {
       console.log("Processing QR data:", qrCodeData);
-      
-      // Extract course from QR data (format is "Course Name|Date")
+
       const parts = qrCodeData.split("|");
       const courseName = parts[0];
-      
-      console.log("Looking for QR code with course:", courseName);
-      
-      // Find the QR code record in the 'qrcodes' collection using multiple strategies
+
       let matchingQrCode = null;
-      
-      // Strategy 1: Try exact match on qrData
       try {
-        matchingQrCode = await pb.collection("qrcodes").getFirstListItem(`qrData="${qrCodeData}"`);
-        console.log("Found QR code by exact match:", matchingQrCode.id);
-      } catch (error) {
-        console.log("No exact match found, trying course name match...");
-        
-        // Strategy 2: Try matching by course name
+        matchingQrCode = await pb
+          .collection("qrcodes")
+          .getFirstListItem(`qrData="${qrCodeData}"`);
+      } catch {
         try {
-          matchingQrCode = await pb.collection("qrcodes").getFirstListItem(`course="${courseName}"`);
-          console.log("Found QR code by course name:", matchingQrCode.id);
+          matchingQrCode = await pb
+            .collection("qrcodes")
+            .getFirstListItem(`course="${courseName}"`);
         } catch (innerError) {
           console.error("No matching QR code found:", innerError);
         }
       }
-  
+
       if (!matchingQrCode) {
-        alert(`QR code not found in the database. Scanned course: ${courseName}`);
+        alert(
+          `QR code not found in the database. Scanned course: ${courseName}`
+        );
         return;
       }
-      
-      // Check if user has already scanned this QR code
+
       try {
-        const existingRecord = await pb.collection("students").getFirstListItem(
-          `user="${userData.id}" && qrCode="${matchingQrCode.id}"`
-        );
-        
+        const existingRecord = await pb
+          .collection("students")
+          .getFirstListItem(
+            `user="${userData.id}" && qrCode="${matchingQrCode.id}"`
+          );
+
         if (existingRecord) {
           alert("You have already recorded attendance for this session!");
           return;
         }
       } catch (error) {
-        // No existing record found, proceed with creating new one
         console.log("No duplicate attendance record found, proceeding...");
       }
-  
-      console.log("Creating attendance record with user ID:", userData.id);
-      
-      // Store the relation by referencing the id of the matched QR code
+
       const scanRecord = await pb.collection("students").create({
-        user: userData.id, // Link scan to user
+        user: userData.id,
         name: userData.name || "Unknown",
         surname: userData.surname || "User",
-        qrCode: matchingQrCode.id, // Store the related QR code ID
-        scannedAt: dayjs().format(), // Store timestamp
+        qrCode: matchingQrCode.id,
+        scannedAt: dayjs().format(),
       });
-  
+
       console.log("Attendance saved:", scanRecord);
-      alert("Attendance successfully recorded!");
+      toast.success("Prisutnost uspješno zabilježena!");
+
+      // Disable scanning for this session
+      setHasScanned(true);
     } catch (error) {
       console.error("Error saving attendance:", error);
-      if (error instanceof Error) {
-        alert(`Failed to record attendance: ${error.message || "Unknown error"}`);
-      } else {
-        alert("Failed to record attendance: Unknown error");
-      }
+      alert(`Failed to record attendance: ${error.message || "Unknown error"}`);
     }
   };
 
@@ -251,7 +264,7 @@ const StudentViewPage = () => {
   const pastLessons = Object.keys(groupedByDate)
     .filter((date) => date !== today)
     .sort((a, b) => dayjs(b).diff(dayjs(a)));
-    
+
   // Show loading state while checking authentication
   if (authLoading) {
     return (
@@ -264,25 +277,29 @@ const StudentViewPage = () => {
 
   return (
     <div className="flex flex-col items-center justify-center gap-8 mb-96 mt-24">
-      <h1 className="font-bold text-3xl text-center">Skenirani QR kodovi studenta:</h1>
-      
+      {userData && (
+        <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4 w-full max-w-lg">
+          <p className="font-bold">Prijavljeni ste kao:</p>
+          <p>
+            {userData.name} {userData.surname} ({userData.email})
+          </p>
+        </div>
+      )}
+      <ToastContainer />
+      <h1 className="font-bold text-3xl text-center">
+        Skenirani QR kodovi studenta:
+      </h1>
+
       {authError && (
         <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4 w-full max-w-lg">
           <p className="font-bold">Upozorenje:</p>
           <p>{authError}</p>
-          <button 
+          <button
             onClick={() => router.push("/login?redirect=student")}
             className="mt-2 bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded"
           >
             Prijavi se
           </button>
-        </div>
-      )}
-      
-      {userData && (
-        <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4 w-full max-w-lg">
-          <p className="font-bold">Prijavljeni ste kao:</p>
-          <p>{userData.name} {userData.surname} ({userData.email})</p>
         </div>
       )}
 
@@ -300,7 +317,12 @@ const StudentViewPage = () => {
                 <h3 className="font-bold text-lg">{qr.course}</h3>
                 <button
                   onClick={toggleCamera}
-                  className="bg-green-600 text-white font-bold px-6 py-2 rounded-lg shadow hover:bg-green-500"
+                  disabled={hasScanned}
+                  className={`font-bold px-6 py-2 rounded-lg shadow ${
+                    hasScanned
+                      ? "bg-gray-400 cursor-not-allowed"
+                      : "bg-green-600 hover:bg-green-500 text-white"
+                  }`}
                 >
                   Skeniraj
                 </button>
@@ -314,7 +336,9 @@ const StudentViewPage = () => {
 
       {pastLessons.length > 0 && (
         <div className="w-full max-w-lg mt-8">
-          <h2 className="font-bold text-xl text-center mb-4">Prošli QR kodovi:</h2>
+          <h2 className="font-bold text-xl text-center mb-4">
+            Prošli QR kodovi:
+          </h2>
           <select
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
@@ -365,7 +389,9 @@ const StudentViewPage = () => {
       {scannedData && (
         <div className="mt-4 p-4 bg-gray-100 rounded-lg text-center w-full max-w-lg">
           <h3 className="font-bold text-lg">Skeniran QR kod:</h3>
-          <p className="text-green-600 font-semibold break-all">{scannedData}</p>
+          <p className="text-green-600 font-semibold break-all">
+            {scannedData}
+          </p>
         </div>
       )}
     </div>
