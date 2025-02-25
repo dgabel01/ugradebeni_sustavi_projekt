@@ -34,17 +34,17 @@ const LoginForm = () => {
   };
 
   return (
-    <div className="max-w-sm mx-auto bg-white p-6 rounded shadow mt-24">
-      <h2 className="text-2xl font-bold text-center mb-4">Login</h2>
+    <div className="w-full max-w-2xl mx-auto bg-white p-12 rounded-2xl shadow-lg mt-20 border-t-[1px] border-t-muted">
+      <h2 className="text-3xl font-bold text-center mb-6">QR evidencija prijava</h2>
 
       {/* Error message */}
-      {error && <p className="text-red-500 text-center">{error}</p>}
+      {error && <p className="text-red-500 text-center text-lg">{error}</p>}
 
-      <form onSubmit={handleLogin} className="space-y-4">
+      <form onSubmit={handleLogin} className="space-y-6">
         <input
           type="email"
           placeholder="Email"
-          className="w-full p-2 border rounded"
+          className="w-full p-4 border rounded-lg text-lg"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
@@ -52,13 +52,13 @@ const LoginForm = () => {
         <input
           type="password"
           placeholder="Password"
-          className="w-full p-2 border rounded"
+          className="w-full p-4 border rounded-lg text-lg"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
         />
-        <button type="submit" className="w-full bg-blue-600 text-white p-2 rounded">
-          Login
+        <button type="submit" className="w-full bg-blue-600 text-white p-4 rounded-lg text-lg hover:bg-blue-700 transition">
+          Prijava
         </button>
       </form>
     </div>

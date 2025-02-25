@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "QR Prisutnost",
+  title: "QR Evidencija",
   description: "Projekt iz kolegija Ugradbeni Sustavi",
 };
 

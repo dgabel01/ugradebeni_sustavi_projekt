@@ -51,7 +51,7 @@ const Navbar = () => {
   };
 
   return (
-    <div className="navbar bg-base-100">
+    <div className="navbar bg-blue-gray-50 rounded-lg bg-blend-exclusion"   style={{ backgroundImage: "url('/Tekstura.png')" }}>
       <div className="navbar-start">
         <Link href="/" className="btn btn-ghost text-xl">
           <Image src={fesbLogo} width={64} alt="navbar-logo" />
@@ -63,7 +63,7 @@ const Navbar = () => {
           <ul className="menu menu-horizontal px-1">
             <li>
               <details>
-                <summary>{userEmail}</summary>
+                <summary className="font-bold text-lg">{userEmail}</summary>
                 <ul className="p-2">
                   <li className="border-[1px] rounded-xl my-4">
                     <a>Pregled kolegija</a>
@@ -82,7 +82,7 @@ const Navbar = () => {
 
       <div className="navbar-end">
         {userEmail ? (
-          <button className="btn" onClick={handleLogout}>
+          <button className="btn border-[1px] border-neutral-300" onClick={handleLogout}>
             Odjava
           </button>
         ) : (

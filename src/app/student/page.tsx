@@ -278,7 +278,7 @@ const StudentViewPage = () => {
   return (
     <div className="flex flex-col items-center justify-center gap-8 mb-96 mt-24">
       {userData && (
-        <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4 w-full max-w-lg">
+        <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 mb-4 w-full max-w-xl">
           <p className="font-bold">Prijavljeni ste kao:</p>
           <p>
             {userData.name} {userData.surname} ({userData.email})
@@ -312,14 +312,14 @@ const StudentViewPage = () => {
             {todaysLessons.map((qr) => (
               <div
                 key={qr.id}
-                className="rounded-xl border-[1px] flex flex-row justify-between p-4 items-center"
-              >
-                <h3 className="font-bold text-lg">{qr.course}</h3>
+                className="rounded-xl border-[1px] flex flex-row justify-between p-6 items-center w-full max-w-lg" // Increased padding and width
+                >
+                <h3 className="font-bold text-white p-2 text-xl rounded-xl border-[1px] bg-indigo-600">{qr.course}</h3>
                 <button
                   onClick={toggleCamera}
-                  disabled={hasScanned}
+                  disabled={hasScanned || qr.expired} // Disable if expired or hasScanned
                   className={`font-bold px-6 py-2 rounded-lg shadow ${
-                    hasScanned
+                    hasScanned || qr.expired
                       ? "bg-gray-400 cursor-not-allowed"
                       : "bg-green-600 hover:bg-green-500 text-white"
                   }`}
