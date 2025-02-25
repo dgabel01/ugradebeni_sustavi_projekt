@@ -63,8 +63,8 @@ const GenerateQrPage = () => {
     const checkActiveTimers = async () => {
       const timers: { [key: string]: string | null } = {};
       
-      const startOfDay = dayjs().startOf("day").toISOString(); // 2025-02-19T00:00:00.000Z
-      const endOfDay = dayjs().endOf("day").toISOString(); // 2025-02-19T23:59:59.999Z
+      const startOfDay = dayjs().startOf("day").toISOString(); 
+      const endOfDay = dayjs().endOf("day").toISOString(); 
     
       for (const course of courses) {
         try {
@@ -80,7 +80,6 @@ const GenerateQrPage = () => {
     
       setActiveTimers(timers);
     };
-    
 
     checkActiveTimers();
   }, []);
@@ -92,30 +91,28 @@ const GenerateQrPage = () => {
       router.push(`/qrcode?course=${encodeURIComponent(course)}`);
       return;
     }
-  
+
     const date = dayjs().format("YYYY-MM-DD 00:00:00"); // Match stored format
     const expiresAt = dayjs().add(10, "minutes").format("YYYY-MM-DD HH:mm:ss");
-  
+
     try {
-      // Create a new QR code
+      // Generate the QR code data with course and date only
+      const qrData = `${course}|${date}`;
+
+      // Create the QR code in the database
       const newQr = await pb.collection("qrcodes").create({
         course,
         date,
-        qrData: `${course} - ${date}`,
+        qrData, // No userId is included now
         expiresAt,
       });
-  
-      // Update state to reflect the new QR code
+
       setActiveTimers((prev) => ({ ...prev, [course]: newQr.id }));
-  
       router.push(`/qrcode?course=${encodeURIComponent(course)}&date=${date}&expiresAt=${expiresAt}`);
     } catch (error) {
       console.error("Error creating QR code:", error);
     }
   };
-  
-  
-  
 
   return (
     <div className="w-full max-w-xl mx-auto p-12 mt-24 bg-white rounded-2xl shadow-md text-center mb-96">

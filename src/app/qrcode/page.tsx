@@ -9,13 +9,6 @@ import duration from "dayjs/plugin/duration";
 import studentsData from "@/data/studenti.json"; // Import students from JSON
 import utc from "dayjs/plugin/utc";
 
-
-
-//isti user za 2 qr koda-error(overwrite)
-
-
-//isti user za 2 qr koda-error(overwrite)
-
 dayjs.extend(duration);
 dayjs.extend(utc);
 
