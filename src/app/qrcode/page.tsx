@@ -33,8 +33,10 @@ const QrCodePage = () => {
       if (!courseParam) return;
 
       try {
-        const qrCodeData = await pb.collection("qrcodes").getFirstListItem(`course = "${courseParam}"`);
-        if (qrCodeData) {
+        const qrCodeData = await pb.collection("qrcodes").getFirstListItem(`course = "${courseParam}"`, {
+          sort: "-created" // Sort by creation time in descending order, so the newest one is fetched
+        });
+                if (qrCodeData) {
           setQrCode(qrCodeData.qrData);
           setQrCodeId(qrCodeData.id);
           setExpiresAt(qrCodeData.expiresAt);  // This is the expiration time from the database
